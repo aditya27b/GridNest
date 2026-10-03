@@ -2752,7 +2752,15 @@
         const res = await fetch(`/api/report/${selectedConsumerId}`);
         if (res.ok) {
           const report = await res.json();
-          document.getElementById('modal-report-body').innerText = report.markdown;
+          // Convert basic markdown to HTML for a better looking report
+          let html = report.markdown
+            .replace(/^# (.*$)/gim, '<h2 style="color:var(--accent-blue);margin-top:0;">$1</h2>')
+            .replace(/^### (.*$)/gim, '<h3 style="color:var(--text-main);border-bottom:1px solid var(--border-main);padding-bottom:5px;margin-top:20px;">$1</h3>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/`(.*?)`/g, '<code style="background:var(--bg-cell);color:var(--accent-orange);padding:2px 4px;border-radius:4px;font-size:0.9em;">$1</code>')
+            .replace(/\n/g, '<br/>');
+            
+          document.getElementById('modal-report-body').innerHTML = `<div style="font-family:'Inter',sans-serif; line-height:1.6; color:var(--text-main);">${html}</div>`;
         } else {
           showFallbackReport(selectedConsumerId);
         }
