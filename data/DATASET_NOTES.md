@@ -1,0 +1,1 @@
+Use the two Kaggle electricity-theft datasets named in the problem statement. Document the exact source, selected columns, preprocessing, assumptions and label mapping. The included synthetic generator is only for ensuring all five required demo scenarios exist.

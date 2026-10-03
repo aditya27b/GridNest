@@ -1,0 +1,48 @@
+dataset:
+  default_path: "data/Electricity_Theft_Data.csv"
+  benchmark_path: "data/data.csv"
+  target_column_mapping:
+    "Electricity_Theft_Data.csv": "CHK_STATE"
+    "data.csv": "FLAG"
+  id_column: "CONS_NO"
+
+feature_engineering:
+  rolling_windows: [7, 14, 30]
+  z_score_clip: 5.0
+  persistence_low_ratio: 0.40
+  persistence_window: 30
+  peer_grouping: true
+  temporal_harmonics: true
+  clean_negative_values: true
+
+models:
+  anomaly_model:
+    name: "isolation_forest"  # options: isolation_forest, lof, statistical
+    n_estimators: 200
+    contamination: 0.10
+    random_state: 42
+
+  classifier:
+    name: "xgboost"  # options: xgboost, random_forest, logistic_regression, lightgbm
+    n_estimators: 250
+    max_depth: 5
+    learning_rate: 0.05
+    subsample: 0.85
+    colsample_bytree: 0.85
+    random_state: 42
+
+risk_engine:
+  weights:
+    anomaly_score: 0.30
+    persistence: 0.25
+    peer_deviation: 0.20
+    communication_health: 0.15
+    meter_health: 0.10
+  thresholds:
+    p1_critical: 75.0
+    p2_high: 50.0
+    p3_medium: 25.0
+
+explainability:
+  enabled: true
+  top_n_features: 5

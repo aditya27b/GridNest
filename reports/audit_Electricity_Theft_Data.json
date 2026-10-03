@@ -1,0 +1,29 @@
+{
+  "dataset_name": "Electricity_Theft_Data.csv",
+  "total_rows": 9956,
+  "total_columns": 367,
+  "id_column": "CONS_NO",
+  "target_column": "CHK_STATE",
+  "target_distribution": {
+    "0": 8562,
+    "1": 1394
+  },
+  "imbalance_ratio": 6.14,
+  "num_date_columns": 365,
+  "date_range": "2015-01-01 to 2015-12-31 (365 days)",
+  "date_format": "%d-%m-%y",
+  "is_chronologically_sorted": true,
+  "has_header_index_row": true,
+  "matrix_stats": {
+    "total_cells": 3633940,
+    "missing_cells": 493666,
+    "missing_percentage": 13.58,
+    "zero_cells": 550500,
+    "zero_percentage": 15.15,
+    "negative_cells": 1442,
+    "min_kwh": -82809.93,
+    "max_kwh": 166121.26,
+    "mean_kwh": 6.94,
+    "median_kwh": 4.43
+  }
+}

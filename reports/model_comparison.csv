@@ -1,0 +1,6 @@
+Model,PR-AUC,ROC-AUC,Precision @ Thresh,Recall,F1-Score,False Alarm Rate,Precision @ Top 5%
+Logistic Regression,0.8604,0.7365,72.2%,94.8%,0.8198,83.83%,96.0%
+Random Forest,0.8675,0.7358,70.0%,99.6%,0.8227,98.02%,98.0%
+Gradient Boosted Trees,0.851,0.7085,83.4%,48.7%,0.6151,22.28%,99.0%
+Isolation Forest (Unsupervised),0.7623,0.5671,87.4%,10.5%,0.187,3.47%,91.0%
+Statistical Detector (Unsupervised),0.7205,0.5475,70.8%,5.4%,0.1,5.12%,70.0%

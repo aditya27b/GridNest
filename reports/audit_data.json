@@ -1,0 +1,29 @@
+{
+  "dataset_name": "data.csv",
+  "total_rows": 42372,
+  "total_columns": 1036,
+  "id_column": "CONS_NO",
+  "target_column": "FLAG",
+  "target_distribution": {
+    "0": 38757,
+    "1": 3615
+  },
+  "imbalance_ratio": 10.72,
+  "num_date_columns": 1034,
+  "date_range": "2014-01-01 to 2016-10-31 (1034 days)",
+  "date_format": "%Y/%m/%d",
+  "is_chronologically_sorted": false,
+  "has_header_index_row": false,
+  "matrix_stats": {
+    "total_cells": 43812648,
+    "missing_cells": 11233528,
+    "missing_percentage": 25.64,
+    "zero_cells": 5788603,
+    "zero_percentage": 13.21,
+    "negative_cells": 0,
+    "min_kwh": 0.0,
+    "max_kwh": 800003.32,
+    "mean_kwh": 9.26,
+    "median_kwh": 4.59
+  }
+}

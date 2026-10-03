@@ -47,3 +47,9 @@ coverage.xml
 *~
 .DS_Store
 Thumbs.db
+
+# Large raw dataset files (>100MB blocked by GitHub)
+data/data.csv
+*.pyc
+__pycache__/
+.DS_Store
