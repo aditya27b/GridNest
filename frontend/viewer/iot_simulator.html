@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GridNest - Industrial Telemetry Console</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Fira Code', 'JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { background-color: #f8fafc; color: #0f172a; overflow: hidden; }
+    /* Custom Scrollbar for matrix and console */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    .shadcn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 6px; font-size: 13px; font-weight: 500; padding: 6px 12px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
+    .shadcn-btn-primary { background: #0f172a; color: #ffffff; }
+    .shadcn-btn-primary:hover { background: #1e293b; }
+    .shadcn-btn-outline { background: transparent; border-color: #e2e8f0; color: #0f172a; }
+    .shadcn-btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .shadcn-btn-ghost { background: transparent; color: #64748b; }
+    .shadcn-btn-ghost:hover { background: #f1f5f9; color: #0f172a; }
+    .shadcn-btn-danger { background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.3); color: #dc2626; }
+    .shadcn-btn-danger:hover { background: rgba(220, 38, 38, 0.15); }
+    
+    .segmented-control { display: flex; background: #f1f5f9; border: 1px solid #e2e8f0; padding: 3px; border-radius: 8px; }
+    .segmented-btn { flex: 1; text-align: center; padding: 6px; font-size: 12px; font-weight: 500; border-radius: 5px; color: #64748b; cursor: pointer; transition: all 0.2s; }
+    .segmented-btn.active { background: #ffffff; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    
+    .meter-cell { border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; cursor: pointer; transition: all 0.2s; background: #ffffff; }
+    .meter-cell:hover { border-color: #cbd5e1; background: #f8fafc; }
+    .meter-cell.selected { border-color: #3b82f6; background: #eff6ff; box-shadow: 0 0 0 1px #3b82f6; }
+    
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 4px; background: #cbd5e1; border-radius: 2px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #3b82f6; cursor: pointer; box-shadow: 0 0 0 2px #ffffff; }
+    
+    /* Checkbox toggle */
+    .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
+    .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
+    .toggle-checkbox:checked + .toggle-label:after { transform: translateX(100%); border-color: #fff; }
+    .toggle-label { width: 36px; height: 20px; background-color: #cbd5e1; border-radius: 9999px; position: relative; cursor: pointer; transition: background-color 0.2s; }
+    .toggle-label:after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #fff; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+<div id="root" class="h-full w-full flex flex-col"></div>
+
+<script type="text/babel">
+  const { useState, useEffect, useRef, useMemo } = React;
+
+  // ICON SVGs
+  const Icons = {
+    Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>,
+    Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>,
+    Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>,
+    RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>,
+    ShieldAlert: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>,
+    Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+    Terminal: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>,
+    ChevronUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>,
+    ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+  };
+
+  // MOCK DATA GENERATOR
+  const generateMockMeters = () => {
+    const meters = [];
+    for(let i=1; i<=24; i++) {
+      const idStr = i.toString().padStart(3, '0');
+      meters.push({ id: `CONS_N_${idStr}`, zone: 'TX-101', load: (Math.random()*4 + 0.5).toFixed(2), baseline: (Math.random()*4 + 0.5).toFixed(2), risk: 0, cause: 'NORMAL' });
+    }
+    for(let i=1; i<=24; i++) {
+      const idStr = i.toString().padStart(3, '0');
+      meters.push({ id: `CONS_S_${idStr}`, zone: 'TX-102', load: (Math.random()*4 + 0.5).toFixed(2), baseline: (Math.random()*4 + 0.5).toFixed(2), risk: 0, cause: 'NORMAL' });
+    }
+    meters[2].risk = 94; meters[2].cause = 'THEFT_BYPASS'; meters[2].load = '0.85'; meters[2].baseline = '4.25';
+    meters[8].risk = 88; meters[8].cause = 'METER_TAMPER'; 
+    meters[14].risk = 65; meters[14].cause = 'STUCK_REGISTER'; meters[14].load = '0.35';
+    meters[30].risk = 45; meters[30].cause = 'EV_SURGE'; meters[30].load = '8.40'; meters[30].baseline = '1.20';
+    meters[40].risk = 72; meters[40].cause = 'COMM_LOSS';
+    return meters;
+  };
+
+  const App = () => {
+    const [meters, setMeters] = useState(generateMockMeters());
+    const [selectedMeterId, setSelectedMeterId] = useState('CONS_N_003');
+    const [clock, setClock] = useState("2026-10-05 06:15");
+    const [autoRun, setAutoRun] = useState(false);
+    const [consoleOpen, setConsoleOpen] = useState(true);
+    const [logs, setLogs] = useState([
+      { time: '06:15:00', topic: 'sys/init', msg: 'GridNest Industrial SCADA initialized.', type: 'info' }
+    ]);
+    
+    // Scenario Panel State
+    const [scenarioTab, setScenarioTab] = useState('theft');
+    const [shuntRatio, setShuntRatio] = useState(25);
+    const [tampers, setTampers] = useState({ mag: true, cover: false, rev: false, covert: false });
+
+    const selectedMeter = useMemo(() => meters.find(m => m.id === selectedMeterId) || meters[0], [meters, selectedMeterId]);
+
+    const addLog = (topic, msg, type='info') => {
+      const time = new Date().toTimeString().split(' ')[0];
+      setLogs(prev => [...prev.slice(-49), { time, topic, msg, type }]);
+    };
+
+    const handleInject = () => {
+      addLog(`grid/control/inject`, `Injected ${scenarioTab.toUpperCase()} on ${selectedMeterId}`, 'warn');
+      setMeters(prev => prev.map(m => {
+        if(m.id === selectedMeterId) {
+          return { ...m, risk: 95, cause: scenarioTab.toUpperCase(), load: scenarioTab === 'theft' ? (m.baseline * (shuntRatio/100)).toFixed(2) : m.load };
+        }
+        return m;
+      }));
+    };
+
+    const handleRestore = () => {
+      addLog(`grid/control/restore`, `Restored ${selectedMeterId} to baseline`, 'info');
+      setMeters(prev => prev.map(m => m.id === selectedMeterId ? { ...m, risk: 0, cause: 'NORMAL', load: m.baseline } : m));
+    };
+
+    const tx101Meters = meters.filter(m => m.zone === 'TX-101');
+    const tx102Meters = meters.filter(m => m.zone === 'TX-102');
+    const anomaliesCount = meters.filter(m => m.risk > 0).length;
+
+    const renderMeterGrid = (meterList, title) => (
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] font-bold text-slate-500 tracking-wider uppercase flex items-center justify-between">
+          <span>{title}</span>
+          <span>{meterList.length} Nodes</span>
+        </div>
+        <div className="grid grid-cols-4 lg:grid-cols-6 gap-2">
+          {meterList.map(m => (
+            <div 
+              key={m.id} 
+              onClick={() => setSelectedMeterId(m.id)}
+              className={`meter-cell flex flex-col gap-1 ${selectedMeterId === m.id ? 'selected' : ''}`}
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-mono text-slate-500">{m.id.split('_')[2]}</span>
+                <div className={`w-2 h-2 rounded-full ${m.risk > 80 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : m.risk > 40 ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+              </div>
+              <span className="text-xs font-mono font-medium text-slate-900">{m.load}kW</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-col h-full bg-slate-50 text-slate-900">
+        
+        {/* HEADER NAVBAR */}
+        <header className="flex-none h-14 border-b border-slate-200 bg-white px-4 flex items-center justify-between select-none shadow-sm z-10">
+          <div className="flex items-center gap-4">
+            <div className="w-8 h-8 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-blue-600">
+              <Icons.Zap />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-slate-900 tracking-tight leading-tight">GridNest Console</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">v2.0 // AMI Telemetry</span>
+            </div>
+            
+            <div className="h-4 w-px bg-slate-200 mx-2"></div>
+            
+            <div className="flex gap-3">
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-full border border-slate-200">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div>
+                <span className="text-[10px] font-mono font-medium text-slate-600">HTTP:8000</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-full border border-slate-200">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_5px_#3b82f6]"></div>
+                <span className="text-[10px] font-mono font-medium text-slate-600">MQTT:1883</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-full border border-slate-200">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></div>
+                <span className="text-[10px] font-mono font-medium text-slate-600">WS:LIVE</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded font-mono text-xs">
+              <Icons.Clock />
+              <span className="text-blue-600 font-semibold">{clock}</span>
+            </div>
+            <button className="shadcn-btn shadcn-btn-outline" onClick={() => addLog('sys/clock', 'Advanced 15m')}>
+              Step +15m
+            </button>
+            <button className={`shadcn-btn ${autoRun ? 'shadcn-btn-danger' : 'shadcn-btn-outline'}`} onClick={() => setAutoRun(!autoRun)}>
+              <Icons.Play />
+              {autoRun ? 'Stop Auto' : 'Auto-Run'}
+            </button>
+            <button className="shadcn-btn shadcn-btn-ghost" onClick={() => setMeters(generateMockMeters())}>
+              <Icons.RefreshCw /> Reset
+            </button>
+          </div>
+        </header>
+
+        {/* TOP KPI STRIP */}
+        <div className="flex-none h-20 border-b border-slate-200 bg-white px-6 flex items-center gap-6">
+          <div className="flex flex-col gap-1 w-48">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Meters Online</span>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-mono font-bold text-slate-900">48<span className="text-slate-400 text-lg">/48</span></span>
+            </div>
+          </div>
+          <div className="h-10 w-px bg-slate-200"></div>
+          
+          <div className="flex flex-col gap-1 w-48">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Active Anomalies</span>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-mono font-bold text-rose-600">{anomaliesCount}</span>
+              <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Detected</span>
+            </div>
+          </div>
+          <div className="h-10 w-px bg-slate-200"></div>
+
+          <div className="flex flex-col gap-1 w-48">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Zone 1 (TX-101) NTL</span>
+            <span className="text-xl font-mono font-bold text-amber-600">15.46%</span>
+          </div>
+          <div className="h-10 w-px bg-slate-200"></div>
+
+          <div className="flex flex-col gap-1 w-48">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Zone 2 (TX-102) NTL</span>
+            <span className="text-xl font-mono font-bold text-slate-700">5.71%</span>
+          </div>
+        </div>
+
+        {/* MAIN DASHBOARD (2-COLUMN GRID) */}
+        <main className="flex-1 overflow-hidden flex bg-slate-50">
+          
+          {/* LEFT: METER MATRIX */}
+          <div className="w-[40%] border-r border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto bg-slate-50">
+            <div className="flex items-center gap-2 mb-2">
+              <Icons.Activity />
+              <h2 className="text-sm font-semibold tracking-tight text-slate-900">Meter Matrix & Topology</h2>
+            </div>
+            {renderMeterGrid(tx101Meters, 'Feeder TX-101 (North)')}
+            {renderMeterGrid(tx102Meters, 'Feeder TX-102 (South)')}
+          </div>
+
+          {/* RIGHT: INSPECTOR & INJECTION */}
+          <div className="w-[60%] p-6 flex flex-col gap-6 overflow-y-auto">
+            
+            {/* SECTION A: SELECTED METER INSPECTOR */}
+            <div className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold tracking-tight text-slate-900">Selected Node Inspector</h2>
+              
+              <div className="border border-slate-200 bg-white rounded-lg p-5 flex flex-col gap-4 shadow-sm">
+                <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center font-mono font-bold text-blue-600">
+                      {selectedMeter.id.split('_')[2]}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-lg font-bold text-slate-900">{selectedMeter.id}</span>
+                      <span className="text-xs font-mono text-slate-500">Feeder: {selectedMeter.zone}</span>
+                    </div>
+                  </div>
+                  {selectedMeter.risk > 50 ? (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 border border-rose-200 rounded text-rose-600 text-xs font-bold tracking-wide shadow-sm">
+                      <Icons.ShieldAlert /> CRITICAL RISK
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded text-slate-500 text-xs font-bold tracking-wide shadow-sm">
+                      NOMINAL
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-4 gap-4 pt-1">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Reported Load</span>
+                    <span className="text-lg font-mono font-semibold text-slate-900">{selectedMeter.load} <span className="text-xs text-slate-500">kW</span></span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">True Baseline</span>
+                    <span className="text-lg font-mono font-semibold text-slate-400">{selectedMeter.baseline} <span className="text-xs text-slate-400">kW</span></span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Anomaly Score</span>
+                    <span className={`text-lg font-mono font-semibold ${selectedMeter.risk > 80 ? 'text-rose-600' : 'text-slate-900'}`}>{selectedMeter.risk}</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Probable Cause</span>
+                    <span className={`text-xs font-bold mt-1.5 truncate ${selectedMeter.risk > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                      {selectedMeter.cause.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION B: SCENARIO INJECTION PANEL */}
+            <div className="flex flex-col gap-3 mt-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-sm font-semibold tracking-tight text-slate-900">Scenario Injection Control</h2>
+                <div className="flex gap-2">
+                  <button className="shadcn-btn shadcn-btn-ghost text-[10px] py-1 px-2 h-auto" onClick={handleRestore}>Restore Node</button>
+                </div>
+              </div>
+              
+              <div className="border border-slate-200 bg-white rounded-lg p-1 shadow-sm">
+                <div className="segmented-control">
+                  {['theft', 'fault', 'comm', 'surge'].map(tab => (
+                    <div 
+                      key={tab}
+                      className={`segmented-btn ${scenarioTab === tab ? 'active' : ''}`}
+                      onClick={() => setScenarioTab(tab)}
+                    >
+                      {tab === 'theft' ? 'Theft Bypass' : tab === 'fault' ? 'Meter Fault' : tab === 'comm' ? 'Comm Drop' : 'Heavy Surge'}
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="p-5 flex flex-col gap-6">
+                  {/* DYNAMIC SCENARIO CONTENT */}
+                  {scenarioTab === 'theft' && (
+                    <>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex justify-between items-end">
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Shunt Ratio (Reported vs Stolen)</span>
+                          <span className="text-sm font-mono font-semibold text-rose-600">{shuntRatio}% Rep / {100-shuntRatio}% Stl</span>
+                        </div>
+                        <input type="range" min="0" max="100" value={shuntRatio} onChange={e => setShuntRatio(parseInt(e.target.value))} />
+                        <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-1">
+                          <span>0% (Full Bypass)</span>
+                          <span>100% (No Bypass)</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-3">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Physical Tamper Sensors</span>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            {id:'mag', label:'Magnetic Tamper Flag'},
+                            {id:'cover', label:'Enclosure Open Switch'},
+                            {id:'rev', label:'Reverse Power Flow'},
+                            {id:'covert', label:'Covert (Mask Bits)'}
+                          ].map(t => (
+                            <label key={t.id} className="flex items-center justify-between p-2.5 border border-slate-200 rounded bg-slate-50 cursor-pointer hover:border-slate-300 transition-colors">
+                              <span className="text-xs font-medium text-slate-700">{t.label}</span>
+                              <div className="relative inline-block w-9 h-5">
+                                <input type="checkbox" className="sr-only toggle-checkbox" checked={tampers[t.id]} onChange={e => setTampers({...tampers, [t.id]: e.target.checked})} />
+                                <div className="toggle-label block w-9 h-5 rounded-full"></div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {scenarioTab !== 'theft' && (
+                    <div className="h-32 flex items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs font-medium">
+                      [ {scenarioTab.toUpperCase()} specific parameters loaded ]
+                    </div>
+                  )}
+
+                  <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
+                    <div className="flex gap-2">
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mt-1">Presets:</span>
+                      <span className="text-[11px] font-semibold text-blue-600 cursor-pointer hover:underline mt-1" onClick={() => {setShuntRatio(20); setSelectedMeterId('CONS_N_003');}}>Covert Theft</span>
+                      <span className="text-slate-300 mt-1">|</span>
+                      <span className="text-[11px] font-semibold text-amber-600 cursor-pointer hover:underline mt-1" onClick={() => {setScenarioTab('fault'); setSelectedMeterId('CONS_N_015');}}>Stuck Register</span>
+                    </div>
+                    <button className="shadcn-btn shadcn-btn-primary" onClick={handleInject}>
+                      Inject Scenario payload
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </main>
+
+        {/* BOTTOM CONSOLE */}
+        <div className={`flex-none border-t border-slate-200 bg-white flex flex-col transition-all duration-300 ${consoleOpen ? 'h-48' : 'h-10'}`}>
+          <div className="h-10 px-4 flex items-center justify-between border-b border-slate-100 cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors" onClick={() => setConsoleOpen(!consoleOpen)}>
+            <div className="flex items-center gap-2 text-slate-700">
+              <Icons.Terminal />
+              <span className="text-xs font-bold tracking-wider">MQTT EVENT LOG</span>
+              <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-200 text-[9px] font-mono text-slate-600 font-bold">{logs.length} Events</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {consoleOpen && <button className="text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase" onClick={(e) => {e.stopPropagation(); setLogs([]);}}>Clear Log</button>}
+              <div className="text-slate-400">{consoleOpen ? <Icons.ChevronDown /> : <Icons.ChevronUp />}</div>
+            </div>
+          </div>
+          
+          {consoleOpen && (
+            <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px] flex flex-col gap-1 bg-[#fdfdfd]">
+              {logs.map((log, idx) => (
+                <div key={idx} className="flex gap-3 leading-relaxed hover:bg-slate-50 px-2 py-0.5 rounded">
+                  <span className="text-slate-400 shrink-0 font-medium">[{log.time}]</span>
+                  <span className="text-blue-600 shrink-0 w-32 font-medium">{log.topic}</span>
+                  <span className={`font-medium ${log.type === 'warn' ? 'text-rose-600' : log.type === 'info' ? 'text-slate-700' : 'text-slate-500'}`}>
+                    {log.msg}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+    );
+  };
+
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<App />);
+</script>
+
+</body>
+</html>
