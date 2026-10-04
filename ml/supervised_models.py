@@ -7,6 +7,50 @@ from typing import Dict, Any, Optional
 import numpy as np
 import pandas as pd
 
+class HybridStackingClassifier:
+    """
+    Champion Hybrid Stacking Ensemble:
+    Combines HistGradientBoosting, Balanced Random Forest, and Isolation Forest.
+    """
+    def __init__(self, **p):
+        from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier, IsolationForest
+        self.hgb = HistGradientBoostingClassifier(
+            max_iter=p.get("n_estimators", 180),
+            learning_rate=p.get("learning_rate", 0.06),
+            min_samples_leaf=15,
+            class_weight="balanced",
+            random_state=42
+        )
+        self.rf = RandomForestClassifier(
+            n_estimators=p.get("n_estimators", 150),
+            max_depth=p.get("max_depth", 12),
+            class_weight="balanced_subsample",
+            random_state=42,
+            n_jobs=-1
+        )
+        self.iso = IsolationForest(
+            n_estimators=100,
+            contamination=0.08,
+            random_state=42
+        )
+
+    def fit(self, X, y):
+        X_clean = X.fillna(0.0)
+        self.hgb.fit(X, y)
+        self.rf.fit(X_clean, y)
+        self.iso.fit(X_clean)
+        return self
+
+    def predict_proba(self, X):
+        X_clean = X.fillna(0.0)
+        p_hgb = self.hgb.predict_proba(X)[:, 1]
+        p_rf = self.rf.predict_proba(X_clean)[:, 1]
+        iso_score = self.iso.decision_function(X_clean)
+        p_iso = 1.0 / (1.0 + np.exp(iso_score * 4.0))
+        p_blend = 0.50 * p_hgb + 0.35 * p_rf + 0.15 * p_iso
+        return np.column_stack([1.0 - p_blend, p_blend])
+
+
 class SupervisedClassifierWrapper:
     def __init__(self, model_type: str = "xgboost", **params):
         self.model_type = model_type.lower()
@@ -62,6 +106,10 @@ class SupervisedClassifierWrapper:
                 n_jobs=-1
             )
             self.actual_model_name = "RandomForest (Balanced)"
+
+        elif self.model_type in ["hybrid", "hybrid_ensemble", "champion"]:
+            self.model = HybridStackingClassifier(**self.params)
+            self.actual_model_name = "Hybrid Stacking Ensemble (Champion)"
 
         elif self.model_type == "logistic_regression":
             from sklearn.linear_model import LogisticRegression

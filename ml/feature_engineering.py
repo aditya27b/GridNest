@@ -78,13 +78,22 @@ def extract_features_at_timestep(
     # or keep track of missingness
     c_eval = np.where(np.isnan(c_t), 0.0, c_t)
 
-    # 2. Deviation Features
+    # Robust Dispersion & Scale (from main)
+    q75_30 = np.nanpercentile(w30_clean, 75, axis=1)
+    q25_30 = np.nanpercentile(w30_clean, 25, axis=1)
+    norm_iqr_30 = (q75_30 - q25_30) / (median_30 + epsilon)
+    cv_30 = std_30 / (mean_30 + epsilon)
+
+    # Deviation Features
     dev_7d_pct = (c_eval - mean_7) / (mean_7 + epsilon)
     dev_30d_pct = (c_eval - mean_30) / (mean_30 + epsilon)
     dev_30d_median_pct = (c_eval - median_30) / (median_30 + epsilon)
 
     neg_dev_pct = np.maximum(0.0, -dev_30d_pct)
     pos_dev_pct = np.maximum(0.0, dev_30d_pct)
+
+    drop_ratio_mean = c_eval / (mean_30 + epsilon)
+    drop_magnitude = np.maximum(0.0, mean_30 - c_eval)
 
     z_score_30 = np.clip((c_eval - mean_30) / (std_30 + epsilon), -5.0, 5.0)
 
@@ -105,7 +114,7 @@ def extract_features_at_timestep(
     y_diff = np.where(np.isnan(w_trend), 0.0, w_trend - y_mean)
     rolling_slope_7 = np.sum(y_diff * x_diff, axis=1) / x_denom
 
-    # 4. Persistence Run-Lengths
+    # 4. Persistence Run-Lengths & Streaks
     # Consecutive days below 40% of 30-day baseline ending at t
     thresh_low = 0.40 * mean_30
     w_recent_14 = np.column_stack([w14_clean, c_eval])
@@ -116,17 +125,29 @@ def extract_features_at_timestep(
         active = is_low[:, day_i]
         consec_low = np.where(active & (consec_low == (is_low.shape[1] - 1 - day_i)), consec_low + 1, consec_low)
 
-    # Consecutive zeros
+    # Consecutive zeros ending at t
     is_zero = (w_recent_14 == 0)
     consec_zero = np.zeros(num_consumers, dtype=int)
     for day_i in range(is_zero.shape[1] - 1, -1, -1):
         active = is_zero[:, day_i]
         consec_zero = np.where(active & (consec_zero == (is_zero.shape[1] - 1 - day_i)), consec_zero + 1, consec_zero)
 
+    # Maximum zero streak across 30 days
+    is_zero_30 = (w30_clean == 0.0) | np.isnan(w30_clean)
+    cur_streak = np.zeros(num_consumers, dtype=float)
+    max_zero_streak_30 = np.zeros(num_consumers, dtype=float)
+    for col_idx in range(is_zero_30.shape[1]):
+        cur_streak = np.where(is_zero_30[:, col_idx], cur_streak + 1.0, 0.0)
+        max_zero_streak_30 = np.maximum(max_zero_streak_30, cur_streak)
+
     # Low consumption ratio over past 30 days
     is_low_30 = (w30_clean < thresh_low[:, None])
     low_ratio_30d = np.nanmean(is_low_30, axis=1)
     low_ratio_30d = np.where(np.isnan(low_ratio_30d), 0.0, low_ratio_30d)
+
+    # CUSUM Cumulative Deficit (Change-Point Detector for stealth micro-theft)
+    deficit_30 = np.maximum(0.0, mean_30[:, None] - np.nan_to_num(w30_clean, nan=0.0))
+    cusum_drop_30 = np.sum(deficit_30, axis=1) / (mean_30 * 30.0 + epsilon)
 
     # 5. Data Quality & Communication Signals
     missing_7d  = np.mean(np.isnan(w7), axis=1)
@@ -156,18 +177,24 @@ def extract_features_at_timestep(
         "rolling_min_30": min_30,
         "rolling_max_30": max_30,
         "load_factor_30": load_factor_30,
+        "norm_iqr_30": norm_iqr_30,
+        "cv_30": cv_30,
         "deviation_7d_pct": dev_7d_pct,
         "deviation_30d_pct": dev_30d_pct,
         "deviation_30d_median_pct": dev_30d_median_pct,
         "negative_deviation_pct": neg_dev_pct,
         "positive_deviation_pct": pos_dev_pct,
+        "drop_ratio_mean": drop_ratio_mean,
+        "drop_magnitude": drop_magnitude,
         "z_score_30": z_score_30,
         "change_1d": change_1d,
         "change_7d": change_7d,
         "rolling_slope_7": rolling_slope_7,
         "consecutive_low_days": consec_low,
         "consecutive_zero_days": consec_zero,
+        "max_zero_streak_30": max_zero_streak_30,
         "low_consumption_ratio_30d": low_ratio_30d,
+        "cusum_drop_30": cusum_drop_30,
         "missing_ratio_7d": missing_7d,
         "missing_ratio_30d": missing_30d,
         "zero_ratio_30d": zero_ratio_30d,

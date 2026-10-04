@@ -880,8 +880,30 @@
             </p>
           </div>
 
+          <!-- LIVE SCENARIO INJECTION CONTROLS -->
+          <div class="card" style="border: 1px dashed var(--accent-blue); background: var(--bg-card); padding: 10px; margin-top: 4px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--accent-blue); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span>⚡ Live Scenario Simulation</span>
+              <span style="font-size: 9px; opacity: 0.7;">Test ML Response</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              <button class="btn" style="background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; font-size: 10px; padding: 6px 4px; font-weight: 700; justify-content: center;" onclick="injectScenario(selectedConsumerId, 'THEFT_BYPASS')" title="Inject bypass theft">
+                🔴 Inject Theft
+              </button>
+              <button class="btn" style="background: rgba(249,115,22,0.15); border-color: #f97316; color: #f97316; font-size: 10px; padding: 6px 4px; font-weight: 700; justify-content: center;" onclick="injectScenario(selectedConsumerId, 'METER_MALFUNCTION')" title="Inject meter malfunction">
+                🟠 Meter Fault
+              </button>
+              <button class="btn" style="background: rgba(234,179,8,0.15); border-color: #eab308; color: #eab308; font-size: 10px; padding: 6px 4px; font-weight: 700; justify-content: center;" onclick="injectScenario(selectedConsumerId, 'COMM_FAILURE')" title="Inject communication failure">
+                🟡 Comm Loss
+              </button>
+              <button class="btn" style="background: rgba(16,185,129,0.15); border-color: #10b981; color: #10b981; font-size: 10px; padding: 6px 4px; font-weight: 700; justify-content: center;" onclick="injectScenario(selectedConsumerId, 'NORMAL')" title="Restore clean normal consumption">
+                🟢 Set Normal
+              </button>
+            </div>
+          </div>
+
           <!-- ACTION BUTTONS -->
-          <div style="display: flex; gap: 8px; margin-top: 2px;">
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
             <button class="btn primary" style="flex: 1; justify-content: center;" onclick="openReportModal()">
               <span>📄 View Investigation Report</span>
             </button>
@@ -1311,6 +1333,7 @@
       });
 
       fetchTwinState();
+      setupLiveSync();
       animate();
     }
 
@@ -2475,30 +2498,48 @@
       document.getElementById('btn-tx-102').className = `btn ${txId === 'TX_102' ? 'primary' : ''}`;
 
       const isWest = txId === 'TX_101';
-      document.getElementById('panel-title-text').innerText = isWest ? "Transformer TX-101 (Zone 1 West Commercial)" : "Transformer TX-102 (Zone 2 East Residential)";
-      document.getElementById('panel-subtitle-text').innerText = `Distribution IoT Gateway (${isWest ? 'IOT_GW_TX_101' : 'IOT_GW_TX_102'})`;
+      const isIotTx = (txId === 'TX_102') && (twinSnapshot.transformers && twinSnapshot.transformers[txId] && twinSnapshot.transformers[txId].is_iot_hardware || (twinSnapshot.grid_summary && twinSnapshot.grid_summary.iot_hardware_active));
+
+      document.getElementById('panel-title-text').innerText = isWest 
+        ? "Transformer TX-101 (Zone 1 West Commercial)" 
+        : (isIotTx ? "Transformer TX-102 (Zone B 🔌 Live ESP32 Hardware)" : "Transformer TX-102 (Zone 2 East Residential)");
+      document.getElementById('panel-subtitle-text').innerText = isIotTx 
+        ? "Distribution IoT Gateway (ESP32 BENCH SENSOR STREAMING — COM7)" 
+        : `Distribution IoT Gateway (${isWest ? 'IOT_GW_TX_101' : 'IOT_GW_TX_102'})`;
 
       if (twinSnapshot && twinSnapshot.transformers && twinSnapshot.transformers[txId]) {
         const tx = twinSnapshot.transformers[txId];
         const acc = tx.accounting || {};
         const iot = tx.iot_sensors || {};
 
-        const isDoneFor = acc.is_done_for !== undefined ? acc.is_done_for : isWest;
+        const isDoneFor = (iot.is_done_for !== undefined) ? iot.is_done_for : (acc.is_done_for !== undefined ? acc.is_done_for : isWest);
         document.getElementById('panel-badge-status').className = `badge ${isDoneFor ? 'CRITICAL' : 'NORMAL'}`;
-        document.getElementById('panel-badge-status').innerText = isDoneFor ? "DONE FOR! (CRITICAL NTL)" : "BALANCED & VERIFIED";
+        document.getElementById('panel-badge-status').innerText = isDoneFor 
+          ? "DONE FOR! (THEFT LINE LOSS DETECTED)" 
+          : (isIotTx ? "IOT SENSORS: BALANCED & HEALTHY" : "BALANCED & VERIFIED");
 
         document.getElementById('tx-reconcile-status').className = `badge ${isDoneFor ? 'CRITICAL' : 'NORMAL'}`;
-        document.getElementById('tx-reconcile-status').innerText = isDoneFor ? "DONE FOR!" : "BALANCED";
+        document.getElementById('tx-reconcile-status').innerText = isDoneFor ? "DONE FOR! (THEFT)" : "BALANCED";
 
-        document.getElementById('tx-input-kwh').innerText = `${acc.power_inputted_kwh || (isWest ? 118.41 : 113.32)} kWh`;
-        document.getElementById('tx-meters-kwh').innerText = `${acc.meters_added_kwh || (isWest ? 95.37 : 105.42)} kWh`;
-        document.getElementById('tx-tech-kwh').innerText = `${acc.cumulative_tech_loss_kwh || (isWest ? 3.35 : 2.69)} kWh`;
-        document.getElementById('tx-missing-kwh').innerText = `${acc.cumulative_unexplained_kwh || (isWest ? 19.69 : 5.20)} kWh (${acc.unexplained_loss_pct || (isWest ? 16.4 : 4.4)}%)`;
+        if (isIotTx && tx.iot_telemetry) {
+          const t = tx.iot_telemetry;
+          document.getElementById('tx-input-kwh').innerText = `${t.transPower_W} W (${t.transEnergy_Wh || 0} Wh)`;
+          document.getElementById('tx-meters-kwh').innerText = `${t.consPower_W} W (${t.consEnergy_Wh || 0} Wh)`;
+          document.getElementById('tx-tech-kwh').innerText = `0.02 W (nominal)`;
+          document.getElementById('tx-missing-kwh').innerText = `${t.powerLoss_W} W (${acc.unexplained_loss_pct || 0}%)`;
+          document.getElementById('tx-v-sec').innerText = `${t.transVoltage} V`;
+          document.getElementById('tx-curr-sec').innerText = `${t.transCurrent} mA`;
+        } else {
+          document.getElementById('tx-input-kwh').innerText = `${acc.power_inputted_kwh || (isWest ? 118.41 : 113.32)} kWh`;
+          document.getElementById('tx-meters-kwh').innerText = `${acc.meters_added_kwh || (isWest ? 95.37 : 105.42)} kWh`;
+          document.getElementById('tx-tech-kwh').innerText = `${acc.cumulative_tech_loss_kwh || (isWest ? 3.35 : 2.69)} kWh`;
+          document.getElementById('tx-missing-kwh').innerText = `${acc.cumulative_unexplained_kwh || (isWest ? 19.69 : 5.20)} kWh (${acc.unexplained_loss_pct || (isWest ? 16.4 : 4.4)}%)`;
+          document.getElementById('tx-v-sec').innerText = `${iot.secondary_voltage_v || (isWest ? 416.2 : 415.8)} V`;
+          document.getElementById('tx-curr-sec').innerText = `${iot.secondary_current_a || (isWest ? 285.4 : 262.1)} A`;
+        }
 
         document.getElementById('tx-gateway-id').innerText = iot.gateway_id || (isWest ? 'IOT_GW_TX_101' : 'IOT_GW_TX_102');
         document.getElementById('tx-v-prim').innerText = `${iot.primary_voltage_kv || (isWest ? 11.05 : 11.02)} kV`;
-        document.getElementById('tx-v-sec').innerText = `${iot.secondary_voltage_v || (isWest ? 416.2 : 415.8)} V`;
-        document.getElementById('tx-curr-sec').innerText = `${iot.secondary_current_a || (isWest ? 285.4 : 262.1)} A`;
         document.getElementById('tx-oil-temp').innerText = `${iot.oil_temperature_c || (isWest ? 61.2 : 56.4)} °C`;
         document.getElementById('tx-phase-unbal').innerText = `${iot.phase_unbalance_pct || (isWest ? 3.8 : 1.9)}%`;
         document.getElementById('tx-thd').innerText = `${iot.thd_voltage_pct || (isWest ? 2.1 : 1.8)}%`;
@@ -2517,55 +2558,98 @@
       const telemetry = cData.telemetry;
       const analysis = cData.analysis;
 
-      document.getElementById('panel-title-text').innerText = `${cId} - Smart Meter Audit`;
-      document.getElementById('panel-subtitle-text').innerText = `${staticInfo.meter_id} | ${staticInfo.zone_id.replace('Zone_', 'Z')}`;
+      const isIotConsumer = staticInfo.is_iot_hardware || cId === 'CONS_S_001' && twinSnapshot.grid_summary && twinSnapshot.grid_summary.iot_hardware_active;
+
+      document.getElementById('panel-title-text').innerText = isIotConsumer 
+        ? `${cId} 🔌 Physical IoT Meter (ESP32)` 
+        : `${cId} - Smart Meter Audit`;
+      document.getElementById('panel-subtitle-text').innerText = isIotConsumer 
+        ? `${staticInfo.meter_id} | Zone B (LIVE HARDWARE STREAM — COM7)` 
+        : `${staticInfo.meter_id} | ${staticInfo.zone_id.replace('Zone_', 'Z')}`;
       
-      document.getElementById('panel-cid').innerText = cId;
+      document.getElementById('panel-cid').innerText = isIotConsumer ? `${cId} (HARDWARE)` : cId;
       document.getElementById('panel-meter-id').innerText = staticInfo.meter_id;
-      document.getElementById('panel-category').innerText = staticInfo.category;
+      document.getElementById('panel-category').innerText = isIotConsumer ? "IoT Hardware Bench" : staticInfo.category;
       document.getElementById('panel-contract').innerText = `${staticInfo.contracted_load_kw} kW`;
       document.getElementById('panel-zone').innerText = `${staticInfo.connected_pole_id || 'POLE'} (${staticInfo.transformer_id})`;
 
       if (analysis) {
-        const score = Math.round(analysis.anomaly_score);
+        const score = Math.round(analysis.anomaly_score || 0);
+        const rLvl = analysis.risk_level || "NORMAL";
+        const causeStr = (analysis.probable_cause || "NORMAL").replace(/_/g, ' ');
         document.getElementById('panel-score-val').innerText = score;
-        document.getElementById('panel-badge-status').className = `badge ${analysis.risk_level}`;
-        document.getElementById('panel-badge-status').innerText = `${analysis.risk_level} RISK`;
-        document.getElementById('panel-cause-title').innerText = analysis.probable_cause.replace(/_/g, ' ');
-        document.getElementById('panel-confidence-val').innerText = `${analysis.confidence_pct}%`;
-        document.getElementById('panel-action-text').innerText = analysis.recommended_action;
+        document.getElementById('panel-badge-status').className = `badge ${rLvl}`;
+        document.getElementById('panel-badge-status').innerText = `${rLvl} RISK`;
+        document.getElementById('panel-cause-title').innerText = causeStr;
+        document.getElementById('panel-confidence-val').innerText = `${analysis.confidence_pct || 95}%`;
+        document.getElementById('panel-action-text').innerText = analysis.recommended_action || "Routine automated surveillance.";
 
         const evList = document.getElementById('panel-evidence-list');
         evList.innerHTML = '';
-        analysis.contributing_factors.forEach(f => {
+        const factors = (analysis.contributing_factors && analysis.contributing_factors.length > 0)
+          ? analysis.contributing_factors
+          : (analysis.evidence && analysis.evidence.length > 0 ? analysis.evidence : ['Consumption adheres within expected diurnal bounds.']);
+
+        factors.forEach(f => {
           const li = document.createElement('li');
           li.className = 'evidence-item';
           li.innerText = f;
           evList.appendChild(li);
         });
 
-        document.getElementById('panel-rep-kw').innerText = `${analysis.reported_kw} kW`;
-        document.getElementById('panel-base-kw').innerText = `${analysis.baseline_mean_kw} kW`;
-        document.getElementById('panel-dev-pct').innerText = `${analysis.deviation_pct > 0 ? '+' : ''}${analysis.deviation_pct}%`;
+        if (isIotConsumer && cData.iot_telemetry) {
+          const iot = cData.iot_telemetry;
+          const repW = iot.consPower_W;
+          const transW = iot.transPower_W;
+          const devPct = iot.powerLoss_W > 0.25 ? -((iot.powerLoss_W / Math.max(0.01, transW))*100).toFixed(1) : 0.0;
+          document.getElementById('panel-rep-kw').innerText = `${repW} W (${iot.consEnergy_Wh || 0} Wh)`;
+          document.getElementById('panel-base-kw').innerText = `${transW} W (Tx Output)`;
+          document.getElementById('panel-dev-pct').innerText = `${devPct}%`;
+          const maxW = Math.max(repW, transW, 3.0);
+          document.getElementById('bar-rep-lbl').innerText = `${repW} W`;
+          document.getElementById('bar-rep-fill').style.width = `${Math.min(100, (repW / maxW) * 100)}%`;
+          document.getElementById('bar-base-lbl').innerText = `${transW} W`;
+          document.getElementById('bar-base-fill').style.width = `${Math.min(100, (transW / maxW) * 100)}%`;
+        } else {
+          const repKw = analysis.reported_kw !== undefined ? analysis.reported_kw : 0.0;
+          const baseKw = analysis.baseline_mean_kw !== undefined ? analysis.baseline_mean_kw : 0.0;
+          const devPct = analysis.deviation_pct !== undefined ? analysis.deviation_pct : 0.0;
 
-        const maxKw = Math.max(analysis.reported_kw, analysis.baseline_mean_kw, 3.0);
-        document.getElementById('bar-rep-lbl').innerText = `${analysis.reported_kw} kW`;
-        document.getElementById('bar-rep-fill').style.width = `${Math.min(100, (analysis.reported_kw / maxKw) * 100)}%`;
-        document.getElementById('bar-base-lbl').innerText = `${analysis.baseline_mean_kw} kW`;
-        document.getElementById('bar-base-fill').style.width = `${Math.min(100, (analysis.baseline_mean_kw / maxKw) * 100)}%`;
+          document.getElementById('panel-rep-kw').innerText = `${repKw} kW`;
+          document.getElementById('panel-base-kw').innerText = `${baseKw} kW`;
+          document.getElementById('panel-dev-pct').innerText = `${devPct > 0 ? '+' : ''}${devPct}%`;
+
+          const maxKw = Math.max(repKw, baseKw, 3.0);
+          document.getElementById('bar-rep-lbl').innerText = `${repKw} kW`;
+          document.getElementById('bar-rep-fill').style.width = `${Math.min(100, (repKw / maxKw) * 100)}%`;
+          document.getElementById('bar-base-lbl').innerText = `${baseKw} kW`;
+          document.getElementById('bar-base-fill').style.width = `${Math.min(100, (baseKw / maxKw) * 100)}%`;
+        }
       }
 
-      if (telemetry && telemetry.reported) {
-        document.getElementById('panel-volt').innerText = `${telemetry.reported.voltage_v} V`;
-        document.getElementById('panel-curr').innerText = `${telemetry.reported.current_a} A`;
+      if (isIotConsumer && cData.iot_telemetry) {
+        const iot = cData.iot_telemetry;
+        document.getElementById('panel-volt').innerText = `${iot.consVoltage} V (ESP32 ADC)`;
+        document.getElementById('panel-curr').innerText = `${iot.consCurrent} mA`;
+        document.getElementById('panel-true-kw').innerText = `${iot.transPower_W} W (Tx Source)`;
+        document.getElementById('panel-stolen-kw').innerText = `${iot.powerLoss_W} W (${((iot.powerLoss_W / Math.max(0.01, iot.transPower_W))*100).toFixed(1)}% Stolen)`;
+        document.getElementById('panel-stolen-kw').style.color = iot.powerLoss_W > 0.25 ? "var(--accent-red)" : "var(--accent-green)";
       } else {
-        document.getElementById('panel-volt').innerText = '0.0 V (OFFLINE)';
-        document.getElementById('panel-curr').innerText = '0.00 A';
-      }
+        if (telemetry && telemetry.reported) {
+          document.getElementById('panel-volt').innerText = `${telemetry.reported.voltage_v} V`;
+          document.getElementById('panel-curr').innerText = `${telemetry.reported.current_a} A`;
+        } else {
+          document.getElementById('panel-volt').innerText = '0.0 V (OFFLINE)';
+          document.getElementById('panel-curr').innerText = '0.00 A';
+        }
 
-      if (telemetry) {
-        document.getElementById('panel-true-kw').innerText = `${telemetry.ground_truth.active_power_kw} kW`;
-        document.getElementById('panel-stolen-kw').innerText = `${telemetry.unreported_stolen_kw} kW`;
+        if (telemetry) {
+          const trueKw = telemetry.ground_truth ? telemetry.ground_truth.active_power_kw : 0.0;
+          const stolenKw = telemetry.unreported_stolen_kw !== undefined ? telemetry.unreported_stolen_kw : 0.0;
+          document.getElementById('panel-true-kw').innerText = `${trueKw} kW`;
+          document.getElementById('panel-stolen-kw').innerText = `${stolenKw} kW`;
+          document.getElementById('panel-stolen-kw').style.color = stolenKw > 0.05 ? "var(--accent-red)" : "var(--accent-green)";
+        }
       }
 
       if (buildingMeshes[cId]) {
@@ -2577,6 +2661,26 @@
       isGroundTruthRevealed = !isGroundTruthRevealed;
       document.getElementById('truth-label').innerText = `Truth: ${isGroundTruthRevealed ? 'ON' : 'OFF'}`;
       document.getElementById('panel-truth-card').style.display = isGroundTruthRevealed ? 'block' : 'none';
+    }
+
+    async function injectScenario(cId, scenarioName) {
+      if (!cId) {
+        alert("Please click a house on the 3D map first to select it!");
+        return;
+      }
+      try {
+        const res = await fetch(`/api/inject/${cId}?scenario=${scenarioName}`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.snapshot) {
+            updateDashboard(data.snapshot);
+          } else {
+            stepSimulation();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to inject scenario:', err);
+      }
     }
 
     async function stepSimulation() {
@@ -2624,8 +2728,43 @@
 
       buildCity3D(snapshot);
       if (currentInspectorMode === 'consumer') selectConsumer(selectedConsumerId);
-      else if (currentInspectorMode === 'transformer') selectTransformer('TX_101');
+      else if (currentInspectorMode === 'transformer') selectTransformer(currentSelectedTxId || 'TX_102');
       else selectPowerStation();
+    }
+
+    // Real-Time Digital Twin Sync Engine: WebSocket Broadcast + Polling
+    let syncIntervalStarted = false;
+    let activeWebSocket = null;
+    function setupLiveSync() {
+      if (!syncIntervalStarted) {
+        syncIntervalStarted = true;
+        // Continuous live polling every 1200ms guarantees 100% reliable updates
+        setInterval(fetchTwinState, 1200);
+      }
+
+      if (activeWebSocket && (activeWebSocket.readyState === WebSocket.OPEN || activeWebSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
+      try {
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        activeWebSocket = new WebSocket(`${proto}//${window.location.host}/ws/live`);
+        activeWebSocket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data && data.grid_summary) {
+              updateDashboard(data);
+            }
+          } catch(e){}
+        };
+        activeWebSocket.onclose = () => {
+          activeWebSocket = null;
+          setTimeout(setupLiveSync, 4000);
+        };
+        activeWebSocket.onerror = () => {
+          if (activeWebSocket) activeWebSocket.close();
+        };
+      } catch(e){}
     }
 
     // Client fallback mockup if running standalone offline file:///
